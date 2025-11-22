@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>Інтерактивна карта парку Олександрія</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+<script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
+
+<style>
+body { margin: 0; font-family: sans-serif; display: flex; }
+#map { width: 70%; height: 100vh; }
+#sidebar { width: 30%; height: 100vh; overflow-y: auto; padding: 15px; background: #f1f1f1; border-left: 2px solid #bbb; }
+.location-item { background: #fff; border: 1px solid #ddd; padding: 8px; border-radius: 6px; margin-bottom: 8px; cursor: pointer; }
+.location-item:hover { background: #eaf3ff; }
+.filter-buttons button { margin: 4px; padding: 7px 12px; border: none; border-radius: 4px; cursor: pointer; background: #ddd; }
+.filter-buttons button.active { background: #5aa7ff; color: #fff; }
+#theme-toggle { margin: 10px 0; padding: 7px 12px; background: #222; color: #fff; border: none; border-radius: 5px; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+<h2>Об’єкти парку</h2>
+<button id="theme-toggle">🌙 Нічний режим</button>
+
+<h3>Фільтри</h3>
+<div class="filter-buttons">
+  <button id="btn-architecture" onclick="toggleCategory('architecture')">Архітектура</button>
+  <button id="btn-nature" onclick="toggleCategory('nature')">Природа</button>
+  <button id="btn-history" onclick="toggleCategory('history')">Історія</button>
+  <button id="btn-other" onclick="toggleCategory('other')">Інше</button>
+</div>
+
+<hr>
+<div id="locations-list"></div>
+<hr>
+
+<h3>Маршрути</h3>
+<button onclick="showRoute('easy')">Легкий маршрут</button>
+<button onclick="showRoute('full')">Повний маршрут</button>
+<button onclick="showRoute('romantic')">Маршрут закоханих 💙</button>
+<button onclick="showRoute('kids')">Дитячий маршрут</button>
+<button onclick="showRoute('instagram')">Інстаграмні місця 📸</button>
+<hr>
+<button onclick="clearRoute()">Очистити маршрут</button>
+<hr>
+
+<h3>GPS навігація</h3>
+<button onclick="locateUser()">Визначити моє місце</button>
+</div>
+
+<div id="map"></div>
+
+<script>
+var POINTS = [
+  { name: "Колонада «Луна»", type: "architecture", coords:[49.81353,30.06698], description:"Класична колонада, унікальна акустика, XIX століття." },
+  { name: "Ротонда", type:"architecture", coords:[49.81255,30.06555], description:"Центральний павільйон, декоративні скульптури, 1800-ті роки." },
+  { name:"Китайський місток", type:"architecture", coords:[49.8130,30.0685], description:"Місток у східному стилі через ставок."},
+  { name:"Острів Мрії", type:"nature", coords:[49.8139,30.0708], description:"Романтичний острів серед ставків, улюблене місце родини Браницьких."},
+  { name:"Холодний став", type:"nature", coords:[49.8151,30.0677], description:"Один з найбільших ставків парку, XVIII століття."},
+  { name:"Палієва гора", type:"history", coords:[49.8140,30.0649], description:"Залишки козацьких укріплень XVII століття."},
+  { name:"Колона Пелікана", type:"architecture", coords:[49.8121,30.0669], description:"Тріумфальна колона з символом жертовності, XIX століття."},
+  { name:"Будинок садівника", type:"other", coords:[49.8152,30.0627], description:"Історична адміністративна будівля парку."}
+];
+
+var map = L.map('map').setView([49.8134,30.0672],15);
+var dayLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+var nightLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png');
+var nightMode=false;
+document.getElementById("theme-toggle").onclick=function(){
+  if(nightMode){ map.removeLayer(nightLayer); dayLayer.addTo(map); nightMode=false; }
+  else{ map.removeLayer(dayLayer); nightLayer.addTo(map); nightMode=true; }
+};
+
+function icon(color){ return L.icon({ iconUrl:"https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-"+color+".png", shadowUrl:"https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png", iconSize:[25,41], iconAnchor:[12,41] }); }
+var icons={ architecture:icon("blue"), nature:icon("green"), history:icon("orange"), other:icon("red") };
+var layers={ architecture:L.layerGroup().addTo(map), nature:L.layerGroup().addTo(map), history:L.layerGroup().addTo(map), other:L.layerGroup().addTo(map) };
+var markers=[];
+
+POINTS.forEach(p=>{
+  let m=L.marker(p.coords,{icon:icons[p.type]}).bindPopup("<b>"+p.name+"</b><br>"+p.description).addTo(layers[p.type]);
+  markers.push(m);
+  let div=document.createElement("div");
+  div.className="location-item";
+  div.innerHTML=p.name;
+  div.onclick=()=>{ map.setView(p.coords,17); m.openPopup(); };
+  document.getElementById("locations-list").appendChild(div);
+});
+
+var activeCategories={ architecture:true, nature:true, history:true, other:true };
+function toggleCategory(c){
+  activeCategories[c]=!activeCategories[c];
+  let btn=document.getElementById("btn-"+c);
+  if(activeCategories[c]){ map.addLayer(layers[c]); btn.classList.add("active"); }
+  else{ map.removeLayer(layers[c]); btn.classList.remove("active"); }
+}
+
+function locateUser(){ map.locate({setView:true,maxZoom:17}); }
+map.on("locationfound", e=>{ L.circle(e.latlng,{radius:e.accuracy}).addTo(map); });
+
+var routeControl=null;
+var ROUTES={
+  easy:[POINTS[0].coords,POINTS[1].coords,POINTS[2].coords],
+  full:POINTS.map(p=>p.coords),
+  romantic:[POINTS[1].coords,POINTS[3].coords,POINTS[5].coords],
+  kids:[POINTS[7].coords,POINTS[4].coords,POINTS[2].coords],
+  instagram:[POINTS[3].coords,POINTS[5].coords,POINTS[1].coords]
+};
+function showRoute(type){
+  if(routeControl) map.removeControl(routeControl);
+  routeControl=L.Routing.control({ waypoints:ROUTES[type].map(c=>L.latLng(c)), routeWhileDragging:false, addWaypoints:false }).addTo(map);
+}
+function clearRoute(){ if(routeControl){ map.removeControl(routeControl); routeControl=null; } }
+</script>
+</body>
+</html>
